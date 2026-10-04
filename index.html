@@ -7,90 +7,133 @@
 <link rel="manifest" href="manifest.json">
 <title>MV-Tool</title>
 <style>
-  :root{ --bg:#0B0D10; --card:#1C2026; --txt:#fff; --muted:#9AA0A6;
+  :root{ --bg:#0B0D10; --card:#1C2026; --card2:#242a31; --txt:#fff; --muted:#9AA0A6;
          --accent:#8AB4F8; --ok:#81C995; --warn:#F2B35E; --bad:#F28B82; }
   *{box-sizing:border-box} html,body{margin:0}
   body{background:var(--bg);color:var(--txt);font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-       padding:16px;max-width:680px;margin:0 auto}
-  h1{font-size:20px;margin:4px 0 2px} .sub{color:var(--muted);font-size:13px;margin-bottom:14px}
-  .bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
-  button{flex:1 1 auto;min-width:96px;min-height:48px;border:0;border-radius:12px;
-          background:var(--card);color:var(--txt);font-size:16px;font-weight:600}
-  button:active{background:var(--accent);color:var(--bg)}
+       padding:16px;max-width:680px;margin:0 auto;padding-bottom:40px}
+  h1{font-size:20px;margin:4px 0 2px} .sub{color:var(--muted);font-size:13px;margin-bottom:12px}
+  .bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+  button{flex:1 1 auto;min-width:72px;min-height:46px;border:0;border-radius:12px;
+          background:var(--card);color:var(--txt);font-size:15px;font-weight:600}
+  button:active{background:var(--accent);color:var(--bg)} button:disabled{opacity:.4}
   button.primary{background:var(--accent);color:var(--bg)}
-  button:disabled{opacity:.4}
-  #status{font-size:13px;color:var(--muted);margin-bottom:10px;min-height:18px}
+  button.sm{min-height:38px;min-width:64px;font-size:14px;flex:0 0 auto;padding:0 12px}
+  button.bad{background:#3a2422;color:var(--bad)} button.warn{background:#3a3222;color:var(--warn)}
+  #status{font-size:13px;color:var(--muted);margin:6px 0;min-height:18px}
+  .panel{background:var(--card);border-radius:12px;padding:12px;margin:10px 0}
+  .panel h2{font-size:14px;margin:0 0 8px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .ap{background:var(--card);border-radius:12px;padding:10px 12px;margin-bottom:8px}
   .ap .top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
   .ap .ssid{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .ap .meta{color:var(--muted);font-size:13px;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
-  .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700}
+  .ap .meta{color:var(--muted);font-size:13px;margin:3px 0 8px;display:flex;gap:10px;flex-wrap:wrap}
+  .ap .acts{display:flex;gap:8px}
+  .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
   .b-ok{background:rgba(129,201,149,.18);color:var(--ok)}
   .b-warn{background:rgba(242,179,94,.18);color:var(--warn)}
   .b-bad{background:rgba(242,139,130,.18);color:var(--bad)}
-  .b-mut{background:rgba(154,160,166,.18);color:var(--muted)}
-  .empty{color:var(--muted);text-align:center;margin-top:40px}
+  .empty{color:var(--muted);text-align:center;margin:30px 0}
+  .hide{display:none}
+  .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+  .big{font-size:18px;font-weight:700}
 </style>
 </head>
 <body>
   <h1>MV-Tool <span id="dot">●</span></h1>
-  <div class="sub">Pilotage BLE de l'outil 2.4&nbsp;GHz — analyse de posture WiFi</div>
+  <div class="sub">Pilotage BLE de l'outil 2.4&nbsp;GHz — ⚠️ émissions sur TON réseau uniquement</div>
 
   <div class="bar">
     <button id="btnConnect" class="primary">Connecter</button>
     <button id="btnScan" disabled>Scan</button>
     <button id="btnStop" disabled>Stop</button>
   </div>
-  <div id="status">Non connecté. Appuie sur « Connecter » (Chrome Android).</div>
+  <div id="status">Non connecté — Chrome Android, Bluetooth activé.</div>
 
+  <div class="panel" id="pBeacon">
+    <h2>Beacon spam (faux réseaux)</h2>
+    <div class="row">
+      <button class="sm warn" data-cmd="beacon 0" data-confirm="Diffuser de faux SSID (Fun) ?">Fun</button>
+      <button class="sm warn" data-cmd="beacon 1" data-confirm="Diffuser de faux SSID (Rickroll) ?">Rickroll</button>
+      <button class="sm" data-cmd="beaconstop">Stop</button>
+    </div>
+  </div>
+
+  <div class="panel hide" id="pCap">
+    <h2>Capture handshake</h2>
+    <div id="capInfo" class="mono">—</div>
+    <div class="row" style="margin-top:8px">
+      <button class="sm" data-cmd="capstop" id="btnCapStop">Stop capture</button>
+    </div>
+    <div id="crackBox" class="hide" style="margin-top:10px">
+      <div class="row">
+        <button class="sm primary" data-cmd="crackdict" data-confirm="Lancer le crack par dictionnaire (/config/wordlist.txt) ?">Crack dico</button>
+        <button class="sm" data-cmd="crackbrute 2 8 8" data-confirm="Lancer le brute-force (abc123, 8)… ça va ramer (pédagogique)">Brute</button>
+        <button class="sm" data-cmd="crackstop">Stop</button>
+      </div>
+      <div id="crkInfo" class="mono big" style="margin-top:8px">—</div>
+    </div>
+  </div>
+
+  <h2 style="font-size:14px;color:var(--muted);margin:14px 0 6px">Réseaux</h2>
   <div id="list"><div class="empty">Aucun réseau — lance un scan.</div></div>
 
 <script>
-const NUS = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
-const RX  = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';   // write (phone -> ESP)
-const TX  = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';   // notify (ESP -> phone)
-
+const NUS='6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const RX ='6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+const TX ='6e400003-b5a3-f393-e0a9-e50e24dcca9e';
 let rxChar=null, txChar=null, dev=null;
-const aps = new Map();            // bssid -> {ssid,ch,sec,pmf,cli}
-const $ = s => document.querySelector(s);
-const enc = new TextEncoder(), dec = new TextDecoder();
+const aps=new Map();                 // idx -> {ssid,bssid,ch,sec,pmf,cli}
+const $=s=>document.querySelector(s);
+const enc=new TextEncoder(), dec=new TextDecoder();
 
 function setConnected(on){
-  $('#dot').style.color = on ? 'var(--ok)' : 'var(--bad)';
-  $('#btnScan').disabled = !on; $('#btnStop').disabled = !on;
-  $('#btnConnect').textContent = on ? 'Déconnecter' : 'Connecter';
+  $('#dot').style.color = on?'var(--ok)':'var(--bad)';
+  ['#btnScan','#btnStop'].forEach(s=>$(s).disabled=!on);
+  $('#btnConnect').textContent = on?'Déconnecter':'Connecter';
 }
-function status(t){ $('#status').textContent = t; }
+const status=t=>$('#status').textContent=t;
+const esc=s=>(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 
-function badge(sec, pmf){
-  // verdict posture
+function badge(sec,pmf){
   if(sec==='WPA3/2') return '<span class="badge b-warn">transition · déclassable</span>';
-  if(sec==='WPA3')   return pmf==='PMF requis'
-      ? '<span class="badge b-ok">WPA3 solide</span>'
-      : '<span class="badge b-warn">WPA3 · PMF faible</span>';
+  if(sec==='WPA3')   return pmf==='PMF requis'?'<span class="badge b-ok">WPA3 solide</span>':'<span class="badge b-warn">WPA3 · PMF faible</span>';
   if(sec==='open')   return '<span class="badge b-bad">ouvert</span>';
   if(sec==='WEP')    return '<span class="badge b-bad">WEP cassé</span>';
   return '<span class="badge b-bad">WPA2 · déauth possible</span>';
 }
-function render(){
-  const list = $('#list');
-  if(aps.size===0){ list.innerHTML='<div class="empty">Aucun réseau — lance un scan.</div>'; return; }
-  const rows=[...aps.values()].sort((a,b)=>a.ssid.localeCompare(b.ssid));
-  list.innerHTML = rows.map(a=>`
+function renderAps(){
+  const list=$('#list');
+  if(!aps.size){ list.innerHTML='<div class="empty">Aucun réseau — lance un scan.</div>'; return; }
+  const items=[...aps.entries()].sort((a,b)=>(a[1].ssid||'').localeCompare(b[1].ssid||''));
+  list.innerHTML=items.map(([idx,a])=>`
     <div class="ap">
       <div class="top"><span class="ssid">${esc(a.ssid||'(caché)')}</span>${badge(a.sec,a.pmf)}</div>
       <div class="meta"><span>canal ${a.ch}</span><span>${a.sec}</span><span>${a.pmf}</span><span>${a.cli} client(s)</span></div>
+      <div class="acts">
+        <button class="sm bad" data-cmd="deauth ${idx}" data-confirm="Déauthentifier les clients de « ${esc(a.ssid)} » ? (TON réseau uniquement)">Deauth</button>
+        <button class="sm" data-cmd="cap ${idx}" data-confirm="Capturer le handshake de « ${esc(a.ssid)} » ? (envoie des deauth)">Capture</button>
+      </div>
     </div>`).join('');
 }
-function esc(s){ return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
 
 function onLine(line){
-  line = line.trim(); if(!line) return;
+  line=line.trim(); if(!line) return;
   if(line.startsWith('AP,')){
-    const p = line.split(',');            // AP,ssid,bssid,ch,sec,pmf,cli
-    if(p.length>=7){ aps.set(p[2], {ssid:p[1],ch:p[3],sec:p[4],pmf:p[5],cli:p[6]}); }
-  } else if(line==='END'){ render(); status(`${aps.size} réseau(x) — live`); }
-  else { status(line); }                  // "OK scan", "OK stop", "ERR cmd"
+    const p=line.split(','); if(p.length>=8) aps.set(p[1],{ssid:p[2],bssid:p[3],ch:p[4],sec:p[5],pmf:p[6],cli:p[7]});
+  } else if(line==='END'){ renderAps(); status(`${aps.size} réseau(x) — live`); }
+  else if(line.startsWith('CAP,')){
+    const p=line.split(','); const hs=p[3]==='1';
+    $('#pCap').classList.remove('hide');
+    $('#capInfo').textContent=`canal ${p[1]} · EAPOL ${p[2]} · handshake ${hs?'✅ OK':'— en attente'}`;
+    $('#crackBox').classList.toggle('hide', !hs);
+  }
+  else if(line.startsWith('CRK,')){
+    const p=line.split(','); const found=p[3]==='1';
+    $('#crkInfo').innerHTML = found ? `🔓 TROUVÉ : <span style="color:var(--ok)">${esc(p[4])}</span>`
+       : `${Number(p[1]).toLocaleString('fr')} essais · ${p[2]==='1'?'en cours…':'arrêté'}`;
+  }
+  else status(line);
 }
 
 async function send(cmd){ if(rxChar) await rxChar.writeValue(enc.encode(cmd)); }
@@ -98,24 +141,31 @@ async function send(cmd){ if(rxChar) await rxChar.writeValue(enc.encode(cmd)); }
 async function connect(){
   try{
     status('Recherche de MV-Tool…');
-    dev = await navigator.bluetooth.requestDevice({ filters:[{services:[NUS]}] });
-    dev.addEventListener('gattserverdisconnected', ()=>{ setConnected(false); status('Déconnecté.'); });
-    const srv = await dev.gatt.connect();
-    const s = await srv.getPrimaryService(NUS);
-    rxChar = await s.getCharacteristic(RX);
-    txChar = await s.getCharacteristic(TX);
+    dev=await navigator.bluetooth.requestDevice({filters:[{services:[NUS]}]});
+    dev.addEventListener('gattserverdisconnected',()=>{setConnected(false);status('Déconnecté.');});
+    const srv=await dev.gatt.connect();
+    const s=await srv.getPrimaryService(NUS);
+    rxChar=await s.getCharacteristic(RX); txChar=await s.getCharacteristic(TX);
     await txChar.startNotifications();
-    txChar.addEventListener('characteristicvaluechanged', e=> onLine(dec.decode(e.target.value)));
+    txChar.addEventListener('characteristicvaluechanged',e=>onLine(dec.decode(e.target.value)));
     setConnected(true); status('Connecté à MV-Tool.');
-  }catch(err){ status('Échec : '+err.message); }
+  }catch(e){ status('Échec : '+e.message); }
 }
-async function disconnect(){ if(dev&&dev.gatt.connected) dev.gatt.disconnect(); setConnected(false); }
+function disconnect(){ if(dev&&dev.gatt.connected) dev.gatt.disconnect(); setConnected(false); }
 
-$('#btnConnect').onclick = ()=> (dev&&dev.gatt.connected) ? disconnect() : connect();
-$('#btnScan').onclick = ()=>{ aps.clear(); render(); status('Scan en cours…'); send('scan'); };
-$('#btnStop').onclick = ()=>{ send('stop'); status('Arrêté.'); };
+$('#btnConnect').onclick=()=> (dev&&dev.gatt.connected)?disconnect():connect();
+$('#btnScan').onclick=()=>{ aps.clear(); renderAps(); status('Scan…'); send('scan'); };
+$('#btnStop').onclick=()=> send('stop');
 
-if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+/* délégation : tout bouton avec data-cmd (confirmation éventuelle via data-confirm) */
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-cmd]'); if(!b) return;
+  const c=b.dataset.confirm; if(c && !confirm(c)) return;
+  send(b.dataset.cmd);
+  if(b.dataset.cmd.startsWith('cap ')) $('#pCap').classList.remove('hide');
+});
+
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 if(!navigator.bluetooth){ status('Web Bluetooth indisponible : utilise Chrome sur Android.'); $('#btnConnect').disabled=true; }
 </script>
 </body>
