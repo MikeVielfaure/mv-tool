@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B0D10">
+<link rel="manifest" href="manifest.json">
+<title>MV-Tool</title>
+<style>
+  :root{ --bg:#0B0D10; --card:#1C2026; --txt:#fff; --muted:#9AA0A6;
+         --accent:#8AB4F8; --ok:#81C995; --warn:#F2B35E; --bad:#F28B82; }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{background:var(--bg);color:var(--txt);font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+       padding:16px;max-width:680px;margin:0 auto}
+  h1{font-size:20px;margin:4px 0 2px} .sub{color:var(--muted);font-size:13px;margin-bottom:14px}
+  .bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  button{flex:1 1 auto;min-width:96px;min-height:48px;border:0;border-radius:12px;
+          background:var(--card);color:var(--txt);font-size:16px;font-weight:600}
+  button:active{background:var(--accent);color:var(--bg)}
+  button.primary{background:var(--accent);color:var(--bg)}
+  button:disabled{opacity:.4}
+  #status{font-size:13px;color:var(--muted);margin-bottom:10px;min-height:18px}
+  .ap{background:var(--card);border-radius:12px;padding:10px 12px;margin-bottom:8px}
+  .ap .top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  .ap .ssid{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ap .meta{color:var(--muted);font-size:13px;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
+  .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700}
+  .b-ok{background:rgba(129,201,149,.18);color:var(--ok)}
+  .b-warn{background:rgba(242,179,94,.18);color:var(--warn)}
+  .b-bad{background:rgba(242,139,130,.18);color:var(--bad)}
+  .b-mut{background:rgba(154,160,166,.18);color:var(--muted)}
+  .empty{color:var(--muted);text-align:center;margin-top:40px}
+</style>
+</head>
+<body>
+  <h1>MV-Tool <span id="dot">●</span></h1>
+  <div class="sub">Pilotage BLE de l'outil 2.4&nbsp;GHz — analyse de posture WiFi</div>
+
+  <div class="bar">
+    <button id="btnConnect" class="primary">Connecter</button>
+    <button id="btnScan" disabled>Scan</button>
+    <button id="btnStop" disabled>Stop</button>
+  </div>
+  <div id="status">Non connecté. Appuie sur « Connecter » (Chrome Android).</div>
+
+  <div id="list"><div class="empty">Aucun réseau — lance un scan.</div></div>
+
+<script>
+const NUS = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const RX  = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';   // write (phone -> ESP)
+const TX  = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';   // notify (ESP -> phone)
+
+let rxChar=null, txChar=null, dev=null;
+const aps = new Map();            // bssid -> {ssid,ch,sec,pmf,cli}
+const $ = s => document.querySelector(s);
+const enc = new TextEncoder(), dec = new TextDecoder();
+
+function setConnected(on){
+  $('#dot').style.color = on ? 'var(--ok)' : 'var(--bad)';
+  $('#btnScan').disabled = !on; $('#btnStop').disabled = !on;
+  $('#btnConnect').textContent = on ? 'Déconnecter' : 'Connecter';
+}
+function status(t){ $('#status').textContent = t; }
+
+function badge(sec, pmf){
+  // verdict posture
+  if(sec==='WPA3/2') return '<span class="badge b-warn">transition · déclassable</span>';
+  if(sec==='WPA3')   return pmf==='PMF requis'
+      ? '<span class="badge b-ok">WPA3 solide</span>'
+      : '<span class="badge b-warn">WPA3 · PMF faible</span>';
+  if(sec==='open')   return '<span class="badge b-bad">ouvert</span>';
+  if(sec==='WEP')    return '<span class="badge b-bad">WEP cassé</span>';
+  return '<span class="badge b-bad">WPA2 · déauth possible</span>';
+}
+function render(){
+  const list = $('#list');
+  if(aps.size===0){ list.innerHTML='<div class="empty">Aucun réseau — lance un scan.</div>'; return; }
+  const rows=[...aps.values()].sort((a,b)=>a.ssid.localeCompare(b.ssid));
+  list.innerHTML = rows.map(a=>`
+    <div class="ap">
+      <div class="top"><span class="ssid">${esc(a.ssid||'(caché)')}</span>${badge(a.sec,a.pmf)}</div>
+      <div class="meta"><span>canal ${a.ch}</span><span>${a.sec}</span><span>${a.pmf}</span><span>${a.cli} client(s)</span></div>
+    </div>`).join('');
+}
+function esc(s){ return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+function onLine(line){
+  line = line.trim(); if(!line) return;
+  if(line.startsWith('AP,')){
+    const p = line.split(',');            // AP,ssid,bssid,ch,sec,pmf,cli
+    if(p.length>=7){ aps.set(p[2], {ssid:p[1],ch:p[3],sec:p[4],pmf:p[5],cli:p[6]}); }
+  } else if(line==='END'){ render(); status(`${aps.size} réseau(x) — live`); }
+  else { status(line); }                  // "OK scan", "OK stop", "ERR cmd"
+}
+
+async function send(cmd){ if(rxChar) await rxChar.writeValue(enc.encode(cmd)); }
+
+async function connect(){
+  try{
+    status('Recherche de MV-Tool…');
+    dev = await navigator.bluetooth.requestDevice({ filters:[{services:[NUS]}] });
+    dev.addEventListener('gattserverdisconnected', ()=>{ setConnected(false); status('Déconnecté.'); });
+    const srv = await dev.gatt.connect();
+    const s = await srv.getPrimaryService(NUS);
+    rxChar = await s.getCharacteristic(RX);
+    txChar = await s.getCharacteristic(TX);
+    await txChar.startNotifications();
+    txChar.addEventListener('characteristicvaluechanged', e=> onLine(dec.decode(e.target.value)));
+    setConnected(true); status('Connecté à MV-Tool.');
+  }catch(err){ status('Échec : '+err.message); }
+}
+async function disconnect(){ if(dev&&dev.gatt.connected) dev.gatt.disconnect(); setConnected(false); }
+
+$('#btnConnect').onclick = ()=> (dev&&dev.gatt.connected) ? disconnect() : connect();
+$('#btnScan').onclick = ()=>{ aps.clear(); render(); status('Scan en cours…'); send('scan'); };
+$('#btnStop').onclick = ()=>{ send('stop'); status('Arrêté.'); };
+
+if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+if(!navigator.bluetooth){ status('Web Bluetooth indisponible : utilise Chrome sur Android.'); $('#btnConnect').disabled=true; }
+</script>
+</body>
+</html>
