@@ -254,7 +254,7 @@ function onLine(line){
   else if(line.startsWith('MON,')){ const p=line.split(','); $('#mB').textContent=p[1];$('#mD').textContent=p[2];$('#mP').textContent=p[3];$('#mData').textContent=p[4];$('#mCh').textContent=p[5]; }
   else if(line==='END'){ if(lastKind==='ap')renderAps(); else if(lastKind==='pr')renderProbes(); else if(lastKind==='ble')renderBle(); }
   else if(line.startsWith('CAP,')){ const p=line.split(','); const hs=p[3]==='1';
-    $('#pCap').classList.remove('hide'); $('#capInfo').textContent=`canal ${p[1]} · EAPOL ${p[2]} · deauth ${p[4]||0} envoyés · handshake ${hs?'✅ OK':'— en attente'}`;
+    $('#pCap').classList.remove('hide'); $('#capInfo').textContent=`canal ${p[1]} · EAPOL ${p[2]} · msg1 ${p[5]||0} / msg2 ${p[6]||0} · deauth ${p[4]||0} · handshake ${hs?'✅ OK':'— en attente'}`;
     $('#crackBox').classList.toggle('hide',!hs); if(hs&&!hsReq){hsReq=true;send('hs');} }
   else if(line.startsWith('DEA,')){ status(`Deauth envoyés : ${Number(line.split(',')[1]).toLocaleString('fr')}`); }
   else if(line.startsWith('HS,')) onHsLine(line);
