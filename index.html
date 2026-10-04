@@ -41,6 +41,8 @@
   .hide{display:none}
   .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
   .big{font-size:18px;font-weight:700}
+  #log{background:#000;color:#9fe39f;font:12px/1.35 ui-monospace,Menlo,Consolas,monospace;
+       padding:8px;border-radius:10px;max-height:180px;overflow:auto;white-space:pre-wrap;margin:6px 0}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .kpi{background:var(--card2);border-radius:10px;padding:10px}
   .kpi .v{font-size:22px;font-weight:800} .kpi .l{color:var(--muted);font-size:12px}
@@ -64,6 +66,8 @@
     <button id="btnStop" disabled>Stop</button>
   </div>
   <div id="status">Non connecté — Chrome Android, Bluetooth + localisation activés.</div>
+  <div class="bar"><button id="btnLogs" class="sm">Logs ▾</button><button id="btnLogClr" class="sm">Vider</button></div>
+  <pre id="log" class="hide"></pre>
 
   <div class="tabs">
     <button data-tab="wifi" class="on">WiFi</button>
@@ -206,6 +210,10 @@ function setConnected(on){
   $('#btnConnect').textContent=on?'Déconnecter':'Connecter';
 }
 const status=t=>$('#status').textContent=t;
+let logLines=[];
+function addLog(t){ logLines.push(t); if(logLines.length>200) logLines.shift();
+  const el=$('#log'); if(el.classList.contains('hide')) el.classList.remove('hide');
+  el.textContent=logLines.join('\n'); el.scrollTop=el.scrollHeight; }
 
 function badge(sec,pmf){
   if(sec==='WPA3/2') return '<span class="badge b-warn">transition · déclassable</span>';
@@ -258,6 +266,7 @@ function onLine(line){
     $('#crackBox').classList.toggle('hide',!hs); if(hs&&!hsReq){hsReq=true;send('hs');} }
   else if(line.startsWith('DEA,')){ status(`Deauth envoyés : ${Number(line.split(',')[1]).toLocaleString('fr')}`); }
   else if(line.startsWith('HS,')) onHsLine(line);
+  else if(line.startsWith('LOG,')) addLog(line.slice(4));
   else status(line);
 }
 
@@ -331,6 +340,9 @@ $('#wl').addEventListener('change', async e=>{ const f=e.target.files[0]; if(!f)
   words=(await f.text()).split(/\r?\n/).map(s=>s.trim()).filter(Boolean); status(`Wordlist : ${words.length} mots`); updateCrackBtn(); });
 $('#btnCrack').onclick=startCrack;
 $('#btnCrackStop').onclick=()=>{ crackRun=false; };
+
+$('#btnLogs').onclick=()=>$('#log').classList.toggle('hide');
+$('#btnLogClr').onclick=()=>{ logLines=[]; $('#log').textContent=''; };
 
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 if(!navigator.bluetooth){ status('Web Bluetooth indisponible : utilise Chrome sur Android.'); $('#btnConnect').disabled=true; }
