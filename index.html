@@ -95,7 +95,11 @@
     <div class="panel hide" id="pCap">
       <h2>Capture handshake</h2>
       <div id="capInfo" class="mono">—</div>
-      <div class="row" style="margin-top:8px"><button class="sm" data-cmd="capstop">Stop capture</button></div>
+      <div class="row" style="margin-top:8px">
+        <button class="sm bad" data-cmd="capdeauth">Déauth maintenant</button>
+        <button class="sm" id="btnAuto">Auto: ON</button>
+        <button class="sm" data-cmd="capstop">Stop capture</button>
+      </div>
       <div id="crackBox" class="hide" style="margin-top:10px">
         <div id="hsState" class="mono" style="margin-bottom:8px">Handshake non récupéré</div>
         <div class="row">
@@ -341,6 +345,8 @@ $('#wl').addEventListener('change', async e=>{ const f=e.target.files[0]; if(!f)
 $('#btnCrack').onclick=startCrack;
 $('#btnCrackStop').onclick=()=>{ crackRun=false; };
 
+let autoOn=true;
+$('#btnAuto').onclick=()=>{ autoOn=!autoOn; send('capauto '+(autoOn?1:0)); $('#btnAuto').textContent='Auto: '+(autoOn?'ON':'OFF'); };
 $('#btnLogs').onclick=()=>$('#log').classList.toggle('hide');
 $('#btnLogClr').onclick=()=>{ logLines=[]; $('#log').textContent=''; };
 

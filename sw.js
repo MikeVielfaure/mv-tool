@@ -1,7 +1,7 @@
 /* Service worker : installe l'app (Add to Home Screen).
    Stratégie NETWORK-FIRST -> on a toujours la derniere version quand en ligne,
    et un repli hors-ligne. Web Bluetooth ne passe PAS par le SW. */
-const CACHE = 'mvtool-v7';
+const CACHE = 'mvtool-v8';
 const SHELL = ['./index.html', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', e => {
