@@ -141,7 +141,7 @@ async function send(cmd){ if(rxChar) await rxChar.writeValue(enc.encode(cmd)); }
 async function connect(){
   try{
     status('Recherche de MV-Tool…');
-    dev=await navigator.bluetooth.requestDevice({filters:[{services:[NUS]}]});
+    dev=await navigator.bluetooth.requestDevice({filters:[{namePrefix:'MV-Tool'},{services:[NUS]}],optionalServices:[NUS]});
     dev.addEventListener('gattserverdisconnected',()=>{setConnected(false);status('Déconnecté.');});
     const srv=await dev.gatt.connect();
     const s=await srv.getPrimaryService(NUS);
